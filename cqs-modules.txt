@@ -1,0 +1,344 @@
+Reading comprehension for Modules
+=====================================
+
+###  Instructions ###
+
+Edit this file, `cqs-modules.txt`, to answer the questions below. There are
+markers indicating where you should write your answers for each question.
+Once you've edited the file, submit it by following the steps outlined on the
+homework spec.
+
+###  Questions  ###
+
+For question 1, first read the following sections of
+[Harper](http://www.cs.cmu.edu/~rwh/isml/book.pdf) on signatures and structures:
+Chapter 18 up to 18.1.2, the middle of page 145 ("Signature specialization is
+used...") to the end of 18.1.2, 18.2 up to 18.2.2's second paragraph (stop at
+"Type definitions permeate..."), and the second paragraph of page 149 ("The use
+of long identifiers...").
+
+Now that you've read about structures and signatures, how do we know when a
+structure *matches* a signature? Here's the idea: given a signature SIG that
+specifies a set of types T, a set of exceptions E, and a set of values V, a
+structure Sig matches signature SIG if Sig provides "matching" definitions for
+all types in T, restates all the exceptions in E, and gives matching definitions
+(val or fun) for all values in V. Note that this means that Sig might provide
+more definitions than those provided in SIG; that's fine as long as everything
+specified in SIG (the signature) is defined in Sig (the structure).
+
+So then what's a "matching" definition?  There are two kinds: type and value.
+
+  - A type definition in Sig *matches* a type specification in SIG if it gives
+    the same name to the type constructor; here are two examples:
+
+      Definition "type my_name = string" matches specification "type my_name".
+    
+      Definition "datatype my_name = NAME of string 
+                                   | FULLNAME of string * string" 
+      also matches the specification since the datatype has the same
+      name as the type specified. 
+  
+  - A value definition in Sig *matches* a value specification in SIG if it has
+    the same name and a type that isn't more general than the type specified:
+    
+      Definition "val starter = []" matches specification 
+      "val starter : 'a list". 
+      
+      Definition "val starter = [1]" also matches the specification, since an
+      int list is an instance of 'a list. 
+
+    You can also have a "fun" definition matching a "val" specification. Given
+    this specification in SIG:
+
+      val f : 'a * bool -> 'a 
+
+    Either of the below definitions matches that specification (the names match
+    and the types are not more general):
+
+      fun f (_, false) = 10
+        | f (_, true)  = 20
+
+
+      fun f (x, y) = x andalso y
+
+    The first "f" has inferred type "int * bool -> int" (since the result type
+    has to match the type of the first tuple element according to SIG), while
+    the second has inferred type "bool * bool -> bool". Both of these types are
+    instances of the general type "'a * bool -> 'a".
+
+Finally, now that you've read about signatures and structures (in Harper), and
+matching (in this document), read the intro to Chapter 20 and section 20.2 of
+Harper to learn about opaque ascription, i.e., how to name a structure that
+matches a given signature __such that the name doesn't leak any information__.
+Then answer the parts of question 1 below.
+
+ 1. The following structure contains definitions for an environment data
+    structure, which should be somewhat familiar from code you have seen in the
+    course interpreters:
+
+        structure ExposedEnv = struct
+          type name   = string
+          type 'a env = (name * 'a) list
+          exception NotFound of name
+          val emptyEnv = []
+
+          fun lookup (name, [])              = raise NotFound name
+            | lookup (name, (x, v) :: pairs) =
+                if x = name then v else lookup (name, pairs)
+
+          fun bindVar (name, value, env) = (name, value) :: env
+        end
+
+    Here is a signature:
+
+        signature ENV = sig
+          type name = string
+          type 'a env
+          val emptyEnv : 'a env
+          val lookup   : name * 'a env -> 'a
+          val bindVar  : name * 'a * 'a env -> 'a env
+        end
+
+    Answer these questions:
+
+    (a) Does the structure match the signature?  That is, if we write
+
+            structure Env :> ENV = ExposedEnv
+
+        does the resulting code typecheck?  Please answer yes or no.
+
+            > yes
+
+    (b) Assume the structure binding in part (a) does typecheck, i.e., we now
+        have a structure identifier named "Env" through which we can access
+        types, values, and exceptions declared in signature "ENV."
+        Does the signature expose enough information for us to write
+        the following function?  Please answer yes or no.
+
+            fun extendEnv (names, vals, rho) =
+              ListPair.foldrEq Env.bindVar rho (names, vals)
+
+             > yes
+
+    (c) With the same assumption from (b), does the signature expose enough 
+        information for us to write the following function?  Please answer 
+        yes or no.
+
+            fun isBound (name, rho) = (Env.lookup (name,rho)) 
+                                      handle Env.NotFound _ => false
+
+             > no
+
+
+    (d) In part (b) and/or part (c), it is not possible to write the
+        function given. Change the signature to make it possible.
+        Please copy, paste, and edit your new version here: 
+
+        signature ENV = sig
+          type name = string
+          type 'a env
+          exception NotFound 
+          val emptyEnv : 'a env
+          val lookup   : name * 'a env -> 'a
+          val bindVar  : name * 'a * 'a env -> 'a env
+        end
+
+    (e) Suppose I change the `ENV` signature to make the `name` type
+        abstract, so the code reads
+
+            signature ENV' = sig
+              type name
+              type 'a env
+              val emptyEnv : 'a env
+              val lookup   : name * 'a env -> 'a
+              val bindVar  : name * 'a * 'a env -> 'a env
+            end
+            structure Env' :> ENV' = ExposedEnv
+
+        The new structure `Env'`, sealed with signature `ENV'`, is useless.
+        Please explain *why* it is useless:
+
+        The new `Env'` structure sealed with signature `ENV' is useless because
+        the name component becomes abstract. This means that the client that 
+        uses `Env'` won't be able to use lookup and bindVar functions because
+        they depend on a valid name input into the function. Without a concrete
+        definition of what type name is, the lookup and bindVar functions can
+        never be properly called.
+
+
+    *You now have the basic ideas needed to understand what is being
+    asked of you in this assignment.*
+
+For question 2, read about functors in section 23.1 in Harper.
+
+ 2. An ML _functor_ is a function that operates on the module level.
+    Think of it as a "module in waiting" or a "module builder";
+    a software engineer might call it a "generic module."
+    A functor's _formal_ parameters, if any, are specified by a
+    _signature_ (a sequence of declarations), and its _actual_ parameters
+    are given by a _structure_ (a sequence of definitions).  
+    A functor's result is a structure.
+    
+    (a) On page 183, Harper defines a functor `DictFun` which takes one
+        parameter: a structure `K` matching signature `ORDERED`, which you can
+        find declared on page 162 (check that out before reading more of this
+        question).  A dictionary can be implemented by a binary tree, in which
+        case we need an ordering on the elements in the tree. Suppose
+        instead you want to implement a dictionary using a hash table.  So you
+        define a new functor `HashDictFun`, and it expects one parameter: a
+        structure `K` with signature `HASHABLE`:
+
+            functor HashDictFun(structure K : HASHABLE) :>
+                      DICT where type Key.t = K.t
+              =
+            struct
+              ... imagine your beautiful hash table here ...
+            end
+
+        The new signature `HASHABLE` is analogous to Harper's signature
+        `ORDERED`. It specifies an *abstract* key type `t` and two values:
+        `hash`, which takes a key and returns its integer hash value, and `eq`,
+        which takes two keys and returns a boolean indicating whether they are
+        equal or not.
+
+        Using this information, complete the definition of signature `HASHABLE`
+        here:
+        
+            signature HASHABLE = sig
+              type t
+              val hash : t -> int
+              val eq : t * t -> bool
+            end
+
+
+    (b) Suppose you have a structure `IntHash` that matches signature
+
+            HASHABLE where type t = int
+            
+        Now suppose you apply functor `DictFun`, from Harper's
+        chapter, to structure `IntHash`.  This scenario is like the 
+        examples on the bottom of page 184; I'm suggesting you try
+        
+            structure HIntDict = DictFun (structure K = IntHash).
+
+        The ML compiler will reject this application of DictFun. Say one
+        *specific* thing the compiler would complain about:
+
+            > The compiler would complain that the IntHash structure does not
+              match the signature for ORDERED which is what the Harper DictFun
+              requires. 
+            
+
+    *You now understand functors well enough to use them in the second and last
+    problems of the homework.*
+
+In this assignment, you'll be implementing some arithmetic operations for
+natural numbers and large integers. This question will get you thinking about
+the actual algorithms involved in these operations. First, read the following
+paraphrasing of a portion of the textbook's supplement:
+
+Long division, in which you divide one natural number by another, is beyond the
+scope of this assignment and the content of Build, Prove, Compare. But short
+division, in which you divide a big number by a digit, is within the scope of
+the book, and it is used to implement `print`: to convert a large integer to a
+sequence of decimal digits, we divide it by 10 to get its least significant
+digit (the remainder), then recursively convert the quotient.
+
+Here is an example of short division in decimal. When 1528 is divided by 7, the
+result is 218, with remainder 2 (the remainder at each step is written above and
+between the digits in the dividend):
+
+                0 2 1 8 
+              _________
+              |  1 1 5
+            7 | 1 5 2 8 remainder 2
+
+Short division works from the most-significant digit of the dividend down to the
+least-significant digit:
+
+(1) We start off dividing 1 by 7, getting 0 with remainder 1. Quotient 0 goes
+    above the line (producing the most-significant digit of the overall
+    quotient), and the remainder is multiplied by 10 and added to the next digit
+    of the dividend (5) to produce 15.
+
+(2) When 15 is divided by 7, quotient 2 goes above the line (producing the next
+    digit of the overall quotient), and remainder 1 is combined with the next
+    digit of the dividend (2) to produce 12.
+
+(3) When 12 is divided by 7, quotient 1 goes above the line (producing the next
+    digit of the overall quotient), and remainder 5 is combined with the next
+    digit of the dividend (8) to produce 58.
+
+(4) When 58 is divided by 7, quotient 8 goes above the line (producing the final
+    digit of the overall quotient), and remainder 2 is the overall remainder.
+
+Now answer the following question about short division.
+
+
+ 3. (a) Divide 2918 by 7, calculating both quotient and remainder.  
+        At each step, you divide a two-digit number by 7.  The
+        remainder is passed along to form the next two-digit number.
+
+              _________
+            7 | 2 9 1 8
+
+        At each step of the computation, you will take a two-digit
+        dividend, divide by 7, and give quotient and remainder.
+        The first step is
+
+              02 divided by 7  ==  0 remainder 2
+              29 divided by 7  ==  4 remainder 1
+              11 divided by 7  ==  1 remainder 4
+              48 divided by 7  ==  6 remainder 6
+
+        There are four steps in total.  Edit the text above to state
+        the dividend, divisor, quotient, and remainder at each step.
+        Here, write the final four-digit quotient and the one-digit
+        remainder:
+           
+          0 4 1 6 remainder 6
+
+    *You are now ready to implement short division on natural numbers
+    (for exercise 1).*
+
+When we think of numbers, we typically use a base-10 system, where each digit
+(possibilities include 0, 1, ..., 9) in the number is multiplied by a power of
+10 to form the full value. There are other common systems too, like base-2 (or
+binary), where each digit (0 or 1) is multiplied by a power of 2, and base-8 (or
+octal) where each digit (0, 1, ..., 7) is multiplied by a power of 8. Given a
+number in base-n, it can be converted to an equivalent number in base-m (where m
+< n) by a sequence of short division operations. Read the "Using short division
+for base conversion" section of the ["Mastering Multiprecision Arithmetic"
+handout](https://www.cs.tufts.edu/comp/105/docs/mastering-arith.pdf)  to learn
+about this, then answer the next question.
+
+ 4. Following the examples in the section "Using short division for base
+    conversion," convert a number from decimal to binary and another number from
+    decimal to octal.
+
+    (a) Using repeated division by 2, convert decimal 13 to binary.  The
+        Mastering Multiprecision Arithmetic handout shows the form, so please
+        just fill in the right-hand sides here: 
+
+              q0 = 6          r0 = 1
+              q1 = 3          r1 = 0
+              q2 = 1          r2 = 1
+              q3 = 0          r3 = 1
+
+        Now write the converted numeral here: 1101
+
+    (b) Using repeated division by 8, convert decimal 25 to octal 31.
+        Follow the same model: at each step, give the intermediate
+        quotient and remainder, and then form the final quotient by
+        reading off the remainders.
+
+        q0 = 3          r0 = 1
+        q1 = 0          r1 = 3
+
+        Reading off the remainders we get 31.
+
+    *You are now ready to implement the `decimal` operation on natural
+    numbers (for exercise 1).  This will also enable you to implement
+    the `toString` operation on signed integers.*
+
+   
